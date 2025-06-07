@@ -2,107 +2,147 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <sys/ioctl.h>
 #include <signal.h>
-#include <math.h>
 #include <time.h>
 
 #define FPGA_DOT_DEVICE "/dev/fpga_dot"
-
+#define FPGA_TEXT_LCD_DEVICE "/dev/fpga_text_lcd"
 #define MAX_BUTTON 13
+#define MAX_OBSTACLES 10
+#define DOT_COLS 8
+#define DOT_ROWS 10
 
 unsigned char quit = 0;
 
-void user_signal1(int sig) 
+void user_signal1(int sig) { quit = 1; }
+
+typedef struct {
+    int row;
+    int col;
+    int active;
+} Obstacle;
+
+Obstacle obstacles[MAX_OBSTACLES];
+
+void InitObstacles()
 {
-	quit = 1;
+    for (int i = 0; i < MAX_OBSTACLES; ++i)
+        obstacles[i].active = 0;
 }
 
-int RandomValue()
+void AddRandomObstacle()
 {
-	srand(time(0));
-	int random = rand() % 6;
-		
-	int pownum = 1;
-	
-	for(int j = 0; j < random + 1; j++)
-		pownum = pownum * 2;
-		
-	return pownum;
+    for (int i = 0; i < MAX_OBSTACLES; ++i)
+    {
+        if (!obstacles[i].active)
+        {
+            obstacles[i].row = 0;
+            obstacles[i].col = rand() % DOT_COLS;
+            obstacles[i].active = 1;
+            break;
+        }
+    }
 }
 
-void make_obstacle()
+void UpdateObstacles()
 {
-	
+    for (int i = 0; i < MAX_OBSTACLES; ++i)
+    {
+        if (obstacles[i].active)
+        {
+            obstacles[i].row++;
+            if (obstacles[i].row >= DOT_ROWS - 1)
+                obstacles[i].active = 0;
+        }
+    }
+}
+
+void RenderObstacles(unsigned char Player[1][DOT_ROWS])
+{
+    for (int r = 0; r < DOT_ROWS - 1; ++r)
+        Player[0][r] = 0x00;
+
+    for (int i = 0; i < MAX_OBSTACLES; ++i)
+    {
+        if (obstacles[i].active)
+        {
+            int r1 = obstacles[i].row;
+            int r2 = r1 + 1;
+
+            if (r1 < DOT_ROWS - 1)
+                Player[0][r1] |= (1 << obstacles[i].col);
+            if (r2 < DOT_ROWS - 1)
+                Player[0][r2] |= (1 << obstacles[i].col);
+        }
+    }
+}
+
+int GetPlayerCol(unsigned char b)
+{
+    for (int i = 0; i < DOT_COLS; ++i)
+        if ((b >> i) & 1)
+            return i;
+    return -1;
+}
+
+int CheckCollision(unsigned char playerByte)
+{
+    int pc = GetPlayerCol(playerByte);
+    for (int i = 0; i < MAX_OBSTACLES; ++i)
+        if (obstacles[i].active &&
+            obstacles[i].row + 1 >= DOT_ROWS - 1 &&
+            obstacles[i].col == pc)
+            return 1;
+    return 0;
+}
+
+void FormatFND(int v, unsigned char d[4])
+{
+    for (int i = 3; i >= 0; --i) { d[i] = v % 10; v /= 10; }
 }
 
 int main(void)
 {
-	unsigned char push_sw_buff[MAX_BUTTON];
-	int dev_push_switch = open("/dev/fpga_push_switch", O_RDWR);
-	int buff_size;
+    signal(SIGINT, user_signal1);
+    srand(time(NULL));
 
-	if (dev_push_switch<0){
-		printf("Device Open Error\n");
-		close(dev_push_switch);
-		return -1;
-	}
+    int dev_sw = open("/dev/fpga_push_switch", O_RDWR);
+    int dev_dot = open(FPGA_DOT_DEVICE, O_WRONLY);
+    int dev_lcd = open(FPGA_TEXT_LCD_DEVICE, O_WRONLY);
+    if (dev_sw < 0 || dev_dot < 0 || dev_fnd < 0 || dev_lcd < 0) return -1;
 
+    unsigned char Player[1][DOT_ROWS] = { {0} };
+    Player[0][DOT_ROWS - 1] = 0x08;  // start at center
+    unsigned char swbuff[MAX_BUTTON];
 
-	unsigned char Player[1][10] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x08};
-	int dev_dot = open(FPGA_DOT_DEVICE, O_WRONLY);
+    InitObstacles();
+    int tick = 0, score = 0;
+    while (!quit)
+    {
+        usleep(1000000);
+        UpdateObstacles();
+        if (tick % 2 == 0) AddRandomObstacle();
+        RenderObstacles(Player);
 
-	if (dev_dot<0) {
-		printf("Device open error : %s\n",FPGA_DOT_DEVICE);
-		exit(1);
-	}
+        read(dev_sw, swbuff, sizeof(swbuff));
+        if (swbuff[0] == 1 && (Player[0][DOT_ROWS - 1] & 0x80) == 0)
+            Player[0][DOT_ROWS - 1] <<= 1;
+        else if (swbuff[2] == 1 && (Player[0][DOT_ROWS - 1] & 0x01) == 0)
+            Player[0][DOT_ROWS - 1] >>= 1;
 
-	int str_size;
-	str_size=sizeof(Player[0]);
-	write(dev_dot,Player[0],str_size);
+        if (CheckCollision(Player[0][DOT_ROWS - 1]))
+        {
+            printf("Game Over\n");
+            break;
+        }
 
-	(void)signal(SIGINT, user_signal1);
+        write(dev_dot, Player[0], DOT_ROWS);
+        tick++;
+    }
 
-	buff_size=sizeof(push_sw_buff);
-	int i = 0;
-	
-	Player[0][0] = make_obstacle();		
-	write(dev_dot,Player[0],str_size);
-
-	while(!quit)
-	{
-		usleep(400000);
-		if(i < 9){
-			if((i+1) != 9)
-				Player[0][i+1] = Player[0][i];
-			Player[0][i] = 0x00;
-			write(dev_dot,Player[0],str_size);
-			i++;
-			if(i == 8){
-				Player[0][i] = 0x00;
-				Player[0][0] = RandomValue();
-				i = 0;
-				write(dev_dot,Player[0],str_size);
-			}
-		}
-		read(dev_push_switch, &push_sw_buff, buff_size);
-		if(push_sw_buff[0] == 1)
-		{
-			Player[0][9] = Player[0][9] << 1;
-			write(dev_dot,Player[0],str_size);
-		}
-		else if(push_sw_buff[2] == 1)
-		{
-			Player[0][9] = Player[0][9] >> 1;
-			write(dev_dot,Player[0],str_size);
-		}
-	}
-	close(dev_dot);
-	close(dev_push_switch);
-	
-	return 0;
-	
+    close(dev_sw);
+    close(dev_dot);
+    close(dev_lcd);
+    return 0;
 }
