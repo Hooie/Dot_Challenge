@@ -16,7 +16,7 @@
 #define DOT_COLS 8
 #define DOT_ROWS 10
 #define INPUT_INTERVAL_MS 50
-#define BEEP_DURATION_US 200000  // Buzzer beep duration (200ms)
+#define BEEP_DURATION_US 200000
 
 unsigned char quit = 0;
 unsigned char Player[1][DOT_ROWS] = { 0 };
@@ -32,14 +32,15 @@ typedef struct {
     int row;
     int col;
     int active;
+    int direction; // 0: 수직, 1: 수평 왼->오, 2: 수평 오->왼
 } Obstacle;
 
-Obstacle obstacles[MAX_OBSTACLES];
+Obstacle verticalObstacles[MAX_OBSTACLES];
+Obstacle leftObstacles[MAX_OBSTACLES];
+Obstacle rightObstacles[MAX_OBSTACLES];
 
-// Interrupt handler for clean exit
 void user_signal1(int sig) { quit = 1; }
 
-// Initialize all required devices
 int InitDevices() {
     dev_push_switch = open("/dev/fpga_push_switch", O_RDWR);
     dev_dot = open(FPGA_DOT_DEVICE, O_WRONLY);
@@ -50,7 +51,6 @@ int InitDevices() {
         ? -1 : 0;
 }
 
-// Close all open devices
 void CleanupDevices() {
     close(dev_dot);
     close(dev_fnd);
@@ -59,7 +59,6 @@ void CleanupDevices() {
     close(dev_push_switch);
 }
 
-// Convert integer score to 4-digit array for FND
 void FormatFND(int value, unsigned char data[4]) {
     for (int i = 3; i >= 0; --i) {
         data[i] = value % 10;
@@ -67,59 +66,98 @@ void FormatFND(int value, unsigned char data[4]) {
     }
 }
 
-// Update FND display with current score
 void UpdateFND() {
     unsigned char fnd_data[4];
     FormatFND(score, fnd_data);
     write(dev_fnd, &fnd_data, 4);
 }
 
-// Initialize obstacle array
 void InitObstacles() {
-    for (int i = 0; i < MAX_OBSTACLES; ++i)
-        obstacles[i].active = 0;
+    for (int i = 0; i < MAX_OBSTACLES; ++i) {
+        verticalObstacles[i].active = 0;
+        leftObstacles[i].active = 0;
+        rightObstacles[i].active = 0;
+    }
 }
 
-// Activate a new obstacle in a random column
-void AddRandomObstacle() {
+void AddObstacle(Obstacle* array, int direction) {
     for (int i = 0; i < MAX_OBSTACLES; ++i) {
-        if (!obstacles[i].active) {
-            obstacles[i].row = 0;
-            obstacles[i].col = rand() % DOT_COLS;
-            obstacles[i].active = 1;
-            break;
+        if (!array[i].active) {
+            array[i].row = rand() % (DOT_ROWS - 1);
+            array[i].col = (direction == 1) ? 0 : DOT_COLS - 1;
+            array[i].active = 1;
+            array[i].direction = direction;
+            return;
         }
     }
 }
 
-// Move obstacles downward and deactivate if out of bounds
+void AddVerticalObstacle() {
+    for (int i = 0; i < MAX_OBSTACLES; ++i) {
+        if (!verticalObstacles[i].active) {
+            verticalObstacles[i].row = 0;
+            verticalObstacles[i].col = rand() % DOT_COLS;
+            verticalObstacles[i].active = 1;
+            verticalObstacles[i].direction = 0;
+            return;
+        }
+    }
+}
+
 void UpdateObstacles() {
     for (int i = 0; i < MAX_OBSTACLES; ++i) {
-        if (obstacles[i].active) {
-            obstacles[i].row += 1;
-            if (obstacles[i].row >= DOT_ROWS - 1)
-                obstacles[i].active = 0;
+        if (verticalObstacles[i].active) {
+            verticalObstacles[i].row += 1;
+            if (verticalObstacles[i].row >= DOT_ROWS - 1)
+                verticalObstacles[i].active = 0;
+        }
+        if (leftObstacles[i].active) {
+            leftObstacles[i].col += 1;
+            if (leftObstacles[i].col >= DOT_COLS)
+                leftObstacles[i].active = 0;
+        }
+        if (rightObstacles[i].active) {
+            rightObstacles[i].col -= 1;
+            if (rightObstacles[i].col < 0)
+                rightObstacles[i].active = 0;
         }
     }
 }
 
-// Render obstacle positions into Player buffer (excluding last row)
 void RenderObstacles() {
     for (int r = 0; r < DOT_ROWS - 1; ++r)
         Player[0][r] = 0x00;
+
     for (int i = 0; i < MAX_OBSTACLES; ++i) {
-        if (obstacles[i].active) {
-            int row1 = obstacles[i].row;
-            int row2 = row1 + 1;
-            if (row1 < DOT_ROWS - 1)
-                Player[0][row1] |= (1 << obstacles[i].col);
-            if (row2 < DOT_ROWS - 1)
-                Player[0][row2] |= (1 << obstacles[i].col);
+        if (verticalObstacles[i].active) {
+            int r1 = verticalObstacles[i].row;
+            int r2 = r1 + 1;
+            if (r1 < DOT_ROWS - 1)
+                Player[0][r1] |= (1 << verticalObstacles[i].col);
+            if (r2 < DOT_ROWS - 1)
+                Player[0][r2] |= (1 << verticalObstacles[i].col);
+        }
+        if (leftObstacles[i].active) {
+            int c1 = leftObstacles[i].col;
+            int c2 = c1 + 1;
+            int row = leftObstacles[i].row;
+            if (c1 < DOT_COLS)
+                Player[0][row] |= (1 << c1);
+            if (c2 < DOT_COLS)
+                Player[0][row] |= (1 << c2);
+        }
+        if (rightObstacles[i].active) {
+            int c1 = rightObstacles[i].col;
+            int c2 = c1 - 1;
+            int row = rightObstacles[i].row;
+            if (c1 >= 0)
+                Player[0][row] |= (1 << c1);
+            if (c2 >= 0)
+                Player[0][row] |= (1 << c2);
         }
     }
 }
 
-// Get the column index of the player
 int GetPlayerCol(unsigned char playerByte) {
     for (int i = 0; i < DOT_COLS; ++i)
         if ((playerByte >> i) & 0x01)
@@ -127,20 +165,18 @@ int GetPlayerCol(unsigned char playerByte) {
     return -1;
 }
 
-// Check collision between player and obstacles
 int CheckCollision() {
     int col = GetPlayerCol(Player[0][DOT_ROWS - 1]);
     for (int i = 0; i < MAX_OBSTACLES; ++i) {
-        if (obstacles[i].active) {
-            int bottom = obstacles[i].row + 1;
-            if (bottom >= DOT_ROWS - 1 && obstacles[i].col == col)
-                return 1;
+        if ((verticalObstacles[i].active && verticalObstacles[i].row + 1 == DOT_ROWS - 1 && verticalObstacles[i].col == col) ||
+            (leftObstacles[i].active && leftObstacles[i].row == DOT_ROWS - 1 && leftObstacles[i].col == col) ||
+            (rightObstacles[i].active && rightObstacles[i].row == DOT_ROWS - 1 && rightObstacles[i].col == col)) {
+            return 1;
         }
     }
     return 0;
 }
 
-// Handle player input and beep buzzer on valid movement
 void HandleInput() {
     read(dev_push_switch, &push_sw_buff, sizeof(push_sw_buff));
     unsigned char* playerRow = &Player[0][DOT_ROWS - 1];
@@ -162,14 +198,13 @@ void HandleInput() {
     }
 }
 
-// Display level selection and configure difficulty parameters
 void SelectLevel() {
     const char* level[] = { " Easy ", "Normal", " Hard ", "Start!" };
     int level_count = 0;
     write(dev_text_lcd, level[level_count], strlen(level[level_count]));
     while (!quit) {
         usleep(400000);
-        HandleInput();  // reuse input for level nav
+        HandleInput();
         if (push_sw_buff[1] == 1) {
             write(dev_text_lcd, level[3], strlen(level[3]));
             break;
@@ -190,14 +225,13 @@ void SelectLevel() {
     }
 }
 
-// Main game loop with separate timers for input and game logic
 void GameLoop() {
     InitObstacles();
     score = 0;
-    Player[0][DOT_ROWS - 1] = 0x08;  // initial position center
+    Player[0][DOT_ROWS - 1] = 0x08;
     int input_tick = 0, game_tick = 0, tick = 0;
     while (!quit) {
-        usleep(10000);  // 10ms frame
+        usleep(10000);
         input_tick += 10;
         game_tick += 10;
         if (input_tick >= INPUT_INTERVAL_MS) {
@@ -206,16 +240,17 @@ void GameLoop() {
         if (game_tick >= game_speed_ms) {
             UpdateObstacles();
             if (tick % spawn_interval_tick == 0) {
-                for (int i = 0; i < max_spawn_count; ++i)
-                    AddRandomObstacle();
+                for (int i = 0; i < max_spawn_count; ++i) {
+                    AddVerticalObstacle();
+                    AddObstacle(leftObstacles, 1);
+                    AddObstacle(rightObstacles, 2);
+                }
             }
             RenderObstacles();
             if (CheckCollision()) {
                 printf("Collision! Game Over.\n");
-                // Clear dot matrix
                 unsigned char clear[DOT_ROWS] = { 0 };
                 write(dev_dot, clear, sizeof(clear));
-                // Play 8-beat buzzer rhythm
                 for (int i = 0; i < 8; ++i) {
                     unsigned char buzz_on = 1;
                     write(dev_buzzer, &buzz_on, 1);
