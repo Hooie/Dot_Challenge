@@ -111,8 +111,8 @@ void HandleInput() {
     }
 
     if (IsTrap(PlayerRow, PlayerCol)) {
-        printf("Trap triggered at (%d,%d)! Executing dot_challenge_version5...\n", PlayerRow, PlayerCol);
-        system("./dot_challenge_version5");
+        printf("Trap triggered at (%d,%d)!\n", PlayerRow, PlayerCol);
+        system("./dot_challenge");
         exit(0);
     }
 }
