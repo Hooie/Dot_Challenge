@@ -11,7 +11,7 @@
 
 #define DOT_ROWS 10
 #define DOT_COLS 7
-#define BEEP_DURATION_US 200000 // 0.2√ 
+#define BEEP_DURATION_US 200000 // 0.2Ï¥à
 
 unsigned char Maze[DOT_ROWS] = {
     0b1011101,  // 0
@@ -26,7 +26,7 @@ unsigned char Maze[DOT_ROWS] = {
     0b1011011   // 9 - trap at (9,1)
 };
 
-// ∆Æ∑¶ ¡¬«• ¡§¿«
+// Ìä∏Îû© Ï¢åÌëú Ï†ïÏùò
 #define NUM_TRAPS 2
 int TrapRow[NUM_TRAPS] = { 1, 9 };
 int TrapCol[NUM_TRAPS] = { 5, 1 };
@@ -77,25 +77,25 @@ void HandleInput() {
     read(dev_push_switch, &push_sw_buff, sizeof(push_sw_buff));
     int moved = 0;
 
-    if (push_sw_buff[5] == 1 && PlayerCol < DOT_COLS - 1) { // °Ê
+    if (push_sw_buff[5] == 1 && PlayerCol < DOT_COLS - 1) { // ‚Üí
         if (((Maze[PlayerRow] >> (6 - (PlayerCol + 1))) & 1) == 0) {
             PlayerCol++;
             moved = 1;
         }
     }
-    else if (push_sw_buff[3] == 1 && PlayerCol > 0) { // °Á
+    else if (push_sw_buff[3] == 1 && PlayerCol > 0) { // ‚Üê
         if (((Maze[PlayerRow] >> (6 - (PlayerCol - 1))) & 1) == 0) {
             PlayerCol--;
             moved = 1;
         }
     }
-    else if (push_sw_buff[1] == 1 && PlayerRow > 0) { // °Ë
+    else if (push_sw_buff[1] == 1 && PlayerRow > 0) { // ‚Üë
         if (((Maze[PlayerRow - 1] >> (6 - PlayerCol)) & 1) == 0) {
             PlayerRow--;
             moved = 1;
         }
     }
-    else if (push_sw_buff[7] == 1 && PlayerRow < DOT_ROWS - 1) { // °È
+    else if (push_sw_buff[7] == 1 && PlayerRow < DOT_ROWS - 1) { // ‚Üì
         if (((Maze[PlayerRow + 1] >> (6 - PlayerCol)) & 1) == 0) {
             PlayerRow++;
             moved = 1;
@@ -132,7 +132,7 @@ int main(void) {
     while (1) {
         HandleInput();
         UpdateDisplay();
-        usleep(500000); // 0.5√ ∏∂¥Ÿ ±Ù∫˝¿” ∞ªΩ≈
+        usleep(500000); // 0.5Ï¥àÎßàÎã§ ÍπúÎπ°ÏûÑ Í∞±Ïã†
     }
 
     close(dev_dot);
