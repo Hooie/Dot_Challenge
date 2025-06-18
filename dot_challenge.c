@@ -24,7 +24,7 @@ unsigned char push_sw_buff[MAX_BUTTON];
 int dev_push_switch, dev_dot, dev_fnd, dev_text_lcd, dev_buzzer;
 int score = 0;
 int game_time = 0; // ms
-int mode = 0; // 0: vertical, 1: horizontal
+int mode = 0; // 0: 상하, 1: 좌우
 int mode_time = 0;
 int warning_state = 0;
 int warning_timer = 0;
@@ -41,7 +41,7 @@ typedef struct {
     int row;
     int col;
     int active;
-    int direction; // 0: down, 1: up, 2: right, 3: left
+    int direction; // 0: 아래, 1: 위, 2: 오른쪽, 3: 왼쪽
 } Obstacle;
 
 Obstacle obstacles[MAX_OBSTACLES];
@@ -57,6 +57,23 @@ void PlayerEncounterMelody() {
         write(dev_buzzer, &off, 4);
         usleep(50000);
     }
+}
+
+void DisplaySkull() {
+    unsigned char skull[DOT_ROWS] = {
+        0b00011100,
+        0b00100010,
+        0b01010101,
+        0b01000001,
+        0b01010101,
+        0b01011001,
+        0b00100010,
+        0b00011100,
+        0b00000000,
+        0b00000000
+    };
+    write(dev_dot, skull, sizeof(skull));
+    usleep(10000000); // 1초 대기
 }
 
 int InitDevices() {
@@ -99,19 +116,19 @@ void InitObstacles() {
 void AddObstacle(int direction) {
     for (int i = 0; i < MAX_OBSTACLES; ++i) {
         if (!obstacles[i].active) {
-            if (direction == 0) { // top -> down
+            if (direction == 0) { // 상 -> 하
                 obstacles[i].row = 0;
                 obstacles[i].col = rand() % DOT_COLS;
             }
-            else if (direction == 1) { // bottom -> up
+            else if (direction == 1) { // 하 -> 상
                 obstacles[i].row = DOT_ROWS - 1;
                 obstacles[i].col = rand() % DOT_COLS;
             }
-            else if (direction == 2) { // left -> right
+            else if (direction == 2) { // 좌 -> 우
                 obstacles[i].col = 0;
                 obstacles[i].row = rand() % DOT_ROWS;
             }
-            else if (direction == 3) { // right -> left
+            else if (direction == 3) { // 우 -> 좌
                 obstacles[i].col = DOT_COLS - 1;
                 obstacles[i].row = rand() % DOT_ROWS;
             }
@@ -126,10 +143,10 @@ void UpdateObstacles() {
     for (int i = 0; i < MAX_OBSTACLES; ++i) {
         if (!obstacles[i].active) continue;
         switch (obstacles[i].direction) {
-        case 0: obstacles[i].row += 1; break; // down
-        case 1: obstacles[i].row -= 1; break; // up
-        case 2: obstacles[i].col += 1; break; // right
-        case 3: obstacles[i].col -= 1; break; // left
+        case 0: obstacles[i].row += 1; break; // 아래로
+        case 1: obstacles[i].row -= 1; break; // 위로
+        case 2: obstacles[i].col += 1; break; // 오른쪽으로
+        case 3: obstacles[i].col -= 1; break; // 왼쪽으로
         }
         if (obstacles[i].row < 0 || obstacles[i].row >= DOT_ROWS ||
             obstacles[i].col < 0 || obstacles[i].col >= DOT_COLS) {
@@ -169,7 +186,7 @@ int CheckCollision() {
 void HandleInput() {
     read(dev_push_switch, &push_sw_buff, sizeof(push_sw_buff));
     int moved = 0;
-    if (mode == 0) { // First 5 seconds: horizontal only
+    if (mode == 0) { // 처음 5초: 좌우
         if (push_sw_buff[3] == 1 && PlayerCol < DOT_COLS - 1) {
             PlayerCol++;
             moved = 1;
@@ -179,7 +196,7 @@ void HandleInput() {
             moved = 1;
         }
     }
-    else if (mode == 1) { // After 5 seconds: vertical only
+    else if (mode == 1) { // 5초 후: 상하
         if (push_sw_buff[1] == 1 && PlayerRow > 0) {
             PlayerRow--;
             moved = 1;
@@ -275,10 +292,7 @@ void GameLoop() {
             }
             continue;
         }
-
-        // skip rest of loop
-
-               // Trigger warning every 5 seconds
+               // 5초마다 경고문 띄우기
         if (mode_time == 5000) {
             const char* warning_msg = "Warning: Shift!";
             write(dev_text_lcd, warning_msg, strlen(warning_msg));
@@ -297,12 +311,12 @@ void GameLoop() {
             if (tick % spawn_interval_tick == 0) {
                 for (int i = 0; i < max_spawn_count; ++i) {
                     if (mode == 0) {
-                        AddObstacle(0); // top -> down
-                        AddObstacle(1); // bottom -> up
+                        AddObstacle(0); // 상 -> 하
+                        AddObstacle(1); // 하 -> 상
                     }
                     else if (mode == 1) {
-                        AddObstacle(2); // left -> right
-                        AddObstacle(3); // right -> left
+                        AddObstacle(2); // 좌 -> 우
+                        AddObstacle(3); // 우 -> 좌
                     }
                 }
             }
@@ -311,6 +325,7 @@ void GameLoop() {
             RenderAll();
 
             if (CheckCollision()) {
+                DisplaySkull();
                 printf("Collision! Game Over.\n");
                 unsigned char clear[DOT_ROWS] = { 0 };
                 write(dev_dot, clear, sizeof(clear));
