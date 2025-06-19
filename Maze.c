@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/wait.h>
 
 #define DOT_DEVICE "/dev/fpga_dot"
 #define SW_DEVICE "/dev/fpga_push_switch"
@@ -11,7 +12,8 @@
 
 #define DOT_ROWS 10
 #define DOT_COLS 7
-#define BEEP_DURATION_US 200000 // 0.2Ï¥à
+#define BEEP_DURATION_US 200000 // 0.2√ 
+int TrapUsed[DOT_ROWS][DOT_COLS] = { 0 };
 
 unsigned char Maze[DOT_ROWS] = {
     0b1011101,  // 0
@@ -26,7 +28,6 @@ unsigned char Maze[DOT_ROWS] = {
     0b1011011   // 9 - trap at (9,1)
 };
 
-// Ìä∏Îû© Ï¢åÌëú Ï†ïÏùò
 #define NUM_TRAPS 2
 int TrapRow[NUM_TRAPS] = { 1, 9 };
 int TrapCol[NUM_TRAPS] = { 5, 1 };
@@ -38,11 +39,12 @@ int blink_state = 0; // 0 = OFF, 1 = ON
 
 int IsTrap(int row, int col) {
     for (int i = 0; i < NUM_TRAPS; i++) {
-        if (TrapRow[i] == row && TrapCol[i] == col)
+        if (TrapRow[i] == row && TrapCol[i] == col && TrapUsed[row][col] == 0)
             return 1;
     }
     return 0;
 }
+
 
 void InitPlayerSpawnPosition() {
     for (int row = 0; row < DOT_ROWS; row++) {
@@ -72,30 +74,72 @@ void UpdateDisplay() {
     write(dev_dot, display, sizeof(display));
     blink_state = !blink_state;
 }
+void HandleTrap() {
+    printf("Trap triggered at (%d,%d)! Executing dot_challenge...\n", PlayerRow, PlayerCol);
+    
+    close(dev_dot);
+    close(dev_buzzer);
+    close(dev_push_switch);
+    
+    pid_t pid = fork();
+    if (pid == 0) {
+        execl("./dot_challenge", "./dot_challenge", NULL);
+        perror("execl failed");
+        exit(1);
+    }
+    else if (pid > 0) {
+        int status;
+        waitpid(pid, &status, 0);
+        
+        dev_dot = open(DOT_DEVICE, O_WRONLY);
+        dev_push_switch = open(SW_DEVICE, O_RDONLY);
+        dev_buzzer = open(BUZZER_DEVICE, O_WRONLY);
+        
+        if (dev_dot < 0 || dev_push_switch < 0 || dev_buzzer < 0) {
+        perror("device open error");
+        exit(1);
+        }
+
+        if (WIFEXITED(status)) {
+            int exit_code = WEXITSTATUS(status);
+            if (exit_code == 0) {
+                printf("Survived dot_challenge. Returning to maze.\n");
+            }
+            else {
+                printf("Failed in dot_challenge. Exiting game.\n");
+                exit(0);
+            }
+        }
+    }
+    else {
+        perror("fork failed");
+        exit(1);
+    }
+}
 
 void HandleInput() {
     read(dev_push_switch, &push_sw_buff, sizeof(push_sw_buff));
     int moved = 0;
 
-    if (push_sw_buff[5] == 1 && PlayerCol < DOT_COLS - 1) { // ‚Üí
+    if (push_sw_buff[5] == 1 && PlayerCol < DOT_COLS - 1) { // °Ê
         if (((Maze[PlayerRow] >> (6 - (PlayerCol + 1))) & 1) == 0) {
             PlayerCol++;
             moved = 1;
         }
     }
-    else if (push_sw_buff[3] == 1 && PlayerCol > 0) { // ‚Üê
+    else if (push_sw_buff[3] == 1 && PlayerCol > 0) { // °Á
         if (((Maze[PlayerRow] >> (6 - (PlayerCol - 1))) & 1) == 0) {
             PlayerCol--;
             moved = 1;
         }
     }
-    else if (push_sw_buff[1] == 1 && PlayerRow > 0) { // ‚Üë
+    else if (push_sw_buff[1] == 1 && PlayerRow > 0) { // °Ë
         if (((Maze[PlayerRow - 1] >> (6 - PlayerCol)) & 1) == 0) {
             PlayerRow--;
             moved = 1;
         }
     }
-    else if (push_sw_buff[7] == 1 && PlayerRow < DOT_ROWS - 1) { // ‚Üì
+    else if (push_sw_buff[7] == 1 && PlayerRow < DOT_ROWS - 1) { // °È
         if (((Maze[PlayerRow + 1] >> (6 - PlayerCol)) & 1) == 0) {
             PlayerRow++;
             moved = 1;
@@ -111,9 +155,8 @@ void HandleInput() {
     }
 
     if (IsTrap(PlayerRow, PlayerCol)) {
-        printf("Trap triggered at (%d,%d)!\n", PlayerRow, PlayerCol);
-        system("./dot_challenge");
-        exit(0);
+        TrapUsed[PlayerRow][PlayerCol] = 1; // ªÁøÎ √≥∏Æ
+        HandleTrap();
     }
 }
 
@@ -132,7 +175,7 @@ int main(void) {
     while (1) {
         HandleInput();
         UpdateDisplay();
-        usleep(500000); // 0.5Ï¥àÎßàÎã§ ÍπúÎπ°ÏûÑ Í∞±Ïã†
+        usleep(500000); // 0.5√ ∏∂¥Ÿ ±Ù∫˝¿” ∞ªΩ≈
     }
 
     close(dev_dot);
