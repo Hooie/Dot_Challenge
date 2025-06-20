@@ -257,7 +257,6 @@ void GameLoop() {
     while (!quit) {
     int warning_shown = 0;
         if (game_time >= 10000) {
-            printf("Survived 10 seconds! Returning to maze.\n");
             CleanupDevices();
             exit(0); 
         }
@@ -325,7 +324,8 @@ void GameLoop() {
 
             if (CheckCollision()) {
                 DisplaySkull();
-                printf("Collision! Game Over.\n");
+                const char* warning_msg = "Game Over";
+                write(dev_text_lcd, warning_msg, strlen(warning_msg));
                 unsigned char clear[DOT_ROWS] = {0};
                 write(dev_dot, clear, sizeof(clear));
                 for (int i = 0; i < 8; ++i) {
@@ -351,7 +351,6 @@ int main(void) {
     signal(SIGINT, user_signal1);
     srand(time(NULL));
     if (InitDevices() != 0) {
-        printf("Device init failed\n");
         return -1;
     }
     GameLoop();
