@@ -15,6 +15,7 @@
   
 [![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/iLiySJ9f4mc/0.jpg)](https://www.youtube.com/watch?v=iLiySJ9f4mc) <br>
 시연 영상
+(위 이미지 클릭 시 유튜브로 이동합니다.)
 <br>
 </div>
 
