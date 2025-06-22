@@ -73,7 +73,7 @@ Archro-EM kit를 활용한 RPG 게임 프로젝트입니다. (25.05.29 ~ 25.06.2
     </td>
   </tr>
 </table>
-> 이태호 : PM , H/W , S/W , Presentation <br><br>
+> 이태호 : PM , S/W , Presentation <br><br>
 > 박세현 : H/W , S/W <br><br>
 > 김도건 : QA , S/W, Documentation  <br><br>
 </div>
